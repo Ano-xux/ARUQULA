@@ -1,7 +1,9 @@
 
 import pandas as pd
+import numpy as np
 import tiktoken as tk
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 
 pd.set_option('display.max_rows', None)
 pd.set_option('display.max_columns', None)
@@ -84,6 +86,8 @@ def organise(question_number, step_number = 0, part = None):
             end_lines.append(question_text.iloc[-1].name)
             return lines_to_text(end_lines, part)
         
+
+        
 def get_step(prompt: pd.DataFrame, step_n, part):
     """
     prompt:pd.dataframe -> Text of a question as a Dataframe
@@ -123,6 +127,36 @@ def filter_out(df: pd.DataFrame):
         df = df.loc[:error_line - 3]
     return df
         
+
+actions_dict = {
+    "search_class" :"search_class_by_label",
+    "search_entity": "search_entity_by_label",
+    "search_property": "search_property_by_label",
+    "get_knowledgegraph_entry": "get_knowledgegraph_entry",
+    "get_property_examples": "get_property_examples",
+    "execute_sparql" : "execute_sparql",
+}
+
+keys = list(actions_dict.keys())
+action_list = []
+for i in keys:
+    action_list.append(actions_dict[i])
+
+
+def get_tokens_of_action(prompt_n, action):
+    searched_action = "Action: " + actions_dict[action]
+    prompt = organise(prompt_n)
+    right_actions = []
+    n = 1
+    for i in range(16):
+        step = get_step(prompt, i+1, 2)
+        if isinstance(step, pd.DataFrame):
+            for line, content in step.iterrows():
+                if content["content"].startswith(searched_action):
+                    n = n+1
+                    right_actions.append(step.to_string(index=False))
+    return np.round((len(tokeniser_model.encode("".join(right_actions)))/n))
+
 
 def get_writing_tokens(prompt_n):
     failed_tries = 0
@@ -183,9 +217,48 @@ def approximate_total_value(closeness):
     print(total_write_price,  "$ : Writing Price")
     print(total_read_price+ total_write_price, "# :total price approximation for 248 questiosn + iterations for approximation: ", closeness)
 
+def approximate_tokens_per_action(closeness):
+    action_token_dict = {
+    "search_class" :0,
+    "search_entity": 0,
+    "search_property": 0,
+    "get_knowledgegraph_entry": 0,
+    "get_property_examples": 0, #wenig verwendet: bei meisten iteration = 0
+    "execute_sparql" : 0,
+    }
+    for action in tqdm(keys):
+        action_tokens = 0
+        for j in range(closeness):
+            action_tokens = action_tokens + get_tokens_of_action(j+1, action)
+        action_token_dict[action] = action_tokens/closeness
+    return action_token_dict
 
 
-print_total_tokens(4)
+ax = plt.subplot()
+values = approximate_tokens_per_action(2)
+keys = list(values.keys())
+action_list = []
+for i in keys:
+    action_list.append(values[i])
+
+a_color = ["blue", "yellow", "brown","green", "red", "orange"]
+placeholder = ["A", "B", "C", "D", "E", "F"]
+
+plt.bar(placeholder, action_list, width= 0.6, color = a_color)
+plt.xlabel("action")
+plt.ylabel("number of tokens")
+ax.set_axisbelow(True)
+plt.title("Tokens per action executed")
+plt.grid(axis='y', linestyle='solid', alpha=0.6, c= "gray")
+plt.savefig("action_tokens.png")
+
+
+
+
+        
+
+
+
 
 
 
